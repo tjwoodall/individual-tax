@@ -1,0 +1,257 @@
+openapi: 3.0.3
+info:
+  title: Individual Tax
+  description: |
+    # Data availability
+
+    Data is only available for taxpayers who are registered for Self Assessment.
+
+    Also, data is only available once PAYE reconciliation has completed. This is the process that determines whether the individual has paid the right amount of tax and, for PAYE-only taxpayers, results in a P800 in the event of [overpayment or underpayment.](https://www.gov.uk/tax-overpayments-and-underpayments)
+
+    Reconciliation starts on or around 6th June and runs for around one million individuals per working night. It has usually completed by the end of November. Unfortunately it is not possible to know when reconciliation will be complete for a specific individual.
+
+    If we are expecting a P11D, reconciliation will not start for that individual until we have received and processed the P11D. If we receive a P11D unexpectedly, we will re-run the reconciliation.
+
+    Data is no longer available once we have received and processed the corresponding Self Assessment return.
+    
+    # Data quality
+
+    The data from this API is based on information we receive from employers and pension providers.
+
+    Note that:
+
+    - Pension providers sometimes don't tell us that income has come from a pension. In these cases, 
+    the API reports the income source as an employment.
+    - If the individual received a State Pension lump sum in the given tax year, this API will report it as an employment 
+    with a specific PAYE reference of `267/LS500`.
+    
+    # Authorisation
+
+    The endpoint in this API is [user-restricted](https://developer.service.hmrc.gov.uk/api-documentation/docs/authorisation/user-restricted-endpoints). 
+    Your users must grant authority for your software to access it by signing in to their HMRC online account.
+
+    The API supports individual and agent users. Note that:
+    - Individual users can only access their own information.
+    - Agent users can only access their own clients’ data.
+
+    The following options are supported for agents:
+
+    **Option 1: Agent services account**
+
+    If the agent uses an [agent services account](https://www.gov.uk/government/collections/hmrc-online-services-for-agents#agent-services-account),
+    they can access their [existing 64-8 clients](https://www.gov.uk/guidance/client-authorisation-an-overview)
+    who they have [linked to their agent services account](https://www.gov.uk/guidance/link-clients-to-your-agent-services-account#link-existing-clients)
+    (restricted to 2 years’ history)
+
+    **Option 2: HMRC online services for agents account**
+
+    If the agent uses an [HMRC online services for agents account](https://www.gov.uk/government/collections/hmrc-online-services-for-agents#hmrc-online-services-for-agents-account)
+    which is enrolled for [Self Assessment for Agents](https://www.gov.uk/guidance/self-assessment-for-agents-online-service),
+    they will be able to access their [existing 64-8 clients](https://www.gov.uk/guidance/client-authorisation-an-overview)
+    (restricted to 2 years’ history).
+  version: '1.1'
+servers:
+  - url: https://test-api.service.hmrc.gov.uk
+    description: Sandbox
+  - url: https://api.service.hmrc.gov.uk
+    description: Production
+paths:
+  /individual-tax/sa/{utr}/annual-summary/{taxYear}:
+    get:
+      tags:
+        - individual-tax
+      summary: Get tax summary
+      description: Fetches an individual’s annual tax summary for the given tax year.
+      operationId: getTaxSummary
+      parameters:
+        - $ref: "#/components/parameters/utr"
+        - $ref: "#/components/parameters/taxYear"
+        - $ref: "#/components/parameters/acceptHeader"
+        - $ref: "#/components/parameters/authorizationHeader"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/individualTaxSaAnnualSummaryResponse"
+              example:
+                pensionsAnnuitiesAndOtherStateBenefits:
+                  otherPensionsAndRetirementAnnuities: 36.5
+                  incapacityBenefit: 980.45
+                refunds:
+                  taxRefundedOrSetOff: 325
+                employments:
+                  - employerPayeReference: 123/AB456
+                    taxTakenOffPay: 890.35
+                  - employerPayeReference: 456/AB456
+                    taxTakenOffPay: 224.99
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/errorResponse"
+              examples:
+                invalidUtr:
+                  description: Invalid UTR
+                  value:
+                    code: SA_UTR_INVALID
+                    message: The provided SA UTR is invalid
+                invalidTaxYear:
+                  description: Invalid tax year
+                  value:
+                    code: TAX_YEAR_INVALID
+                    message: The provided Tax Year is invalid
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/errorResponse"
+              examples:
+                unauthorisedUser:
+                  description: User not authorised to access data for given UTR
+                  value:
+                    code: UNAUTHORIZED
+                    message: Bearer token is missing or not authorized
+        "404":
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/errorResponse"
+              examples:
+                unmatchedRecipient:
+                  description: Data not available for given UTR and tax year (see the data availability section for more details)
+                  value:
+                    code: NOT_FOUND
+                    message: Resource was not found
+      deprecated: false
+      security:
+        - user-restricted:
+            - read:individual-tax
+components:
+  parameters:
+    utr:
+      name: utr
+      in: path
+      description: The 10 digit self-assessment UTR for the individual.
+      required: true
+      style: simple
+      schema:
+        type: string
+        example: 2234567890
+    taxYear:
+      name: taxYear
+      in: path
+      description: The tax year for the tax being retrieved.
+      required: true
+      style: simple
+      schema:
+        pattern: ^[0-9]{4}-[0-9]{2}$
+        type: string
+        example: 2016-17
+    acceptHeader:
+      name: Accept
+      in: header
+      description: Specifies the response format and the [version](/api-documentation/docs/reference-guide#versioning) of the API to be used.
+      style: simple
+      schema:
+        type: string
+        enum:
+          - application/vnd.hmrc.1.1+json
+      required: true
+    authorizationHeader:
+      name: Authorization
+      in: header
+      description: An [OAuth 2.0 Bearer Token](/api-documentation/docs/authorisation/user-restricted-endpoints) with the `read:individual-tax` scope.
+      style: simple
+      schema:
+        type: string
+        example: Bearer bb7fed3fe10dd235a2ccda3d50fb
+      required: true
+  securitySchemes:
+    user-restricted:
+      type: oauth2
+      description: HMRC supports OAuth 2.0 for authenticating [user-restricted](https://developer.service.hmrc.gov.uk/api-documentation/docs/authorisation/user-restricted-endpoints) API requests using an OAuth 2.0 Bearer Token in the Authorization header.
+      flows:
+        authorizationCode:
+          authorizationUrl: https://api.service.hmrc.gov.uk/oauth/authorize
+          tokenUrl: https://api.service.hmrc.gov.uk/oauth/token
+          refreshUrl: https://api.service.hmrc.gov.uk/oauth/refresh
+          scopes:
+            read:individual-tax: Access personal and employment-related tax information
+  schemas:
+    errorResponse:
+      title: errorResponse
+      required:
+        - code
+        - message
+      type: object
+      properties:
+        code:
+          type: string
+          description: The error code
+        message:
+          type: string
+          description: The error message
+    employment:
+      title: employment
+      required:
+        - employerPayeReference
+        - taxTakenOffPay
+      type: object
+      properties:
+        employerPayeReference:
+          type: string
+          description: The employer’s PAYE reference. A value of 267/LS500 indicates a State Pension lump sum.
+          example: 123/AB456
+        taxTakenOffPay:
+          type: number
+          description: The amount of UK tax deducted from pay under this employment (or State Pension lump sum).
+          example: 890.35
+    pensionsAnnuitiesAndOtherStateBenefits:
+      title: pensionsAnnuitiesAndOtherStateBenefits
+      type: object
+      properties:
+        otherPensionsAndRetirementAnnuities:
+          type: number
+          description: The amount of tax deducted from pensions (other than State Pension), retirement annuities and taxable trivial payments.
+          example: 36.5
+        incapacityBenefit:
+          type: number
+          description: The amount of tax deducted from Incapacity Benefit.
+          example: 980.45
+    refunds:
+      title: refunds
+      type: object
+      properties:
+        taxRefundedOrSetOff:
+          type: number
+          description: The amount of Income Tax refunded or set off by HMRC or Jobcentre Plus.
+          example: 325
+    individualTaxSaAnnualSummaryResponse:
+      title: individualTaxSaAnnualSummaryResponse
+      required:
+        - pensionsAnnuitiesAndOtherStateBenefits
+        - refunds
+        - employments
+      type: object
+      properties:
+        pensionsAnnuitiesAndOtherStateBenefits:
+          allOf:
+            - $ref: "#/components/schemas/pensionsAnnuitiesAndOtherStateBenefits"
+          description: Tax deducted from pensions, annuities and other state benefits
+        refunds:
+          $ref: "#/components/schemas/refunds"
+        employments:
+          type: array
+          items:
+            $ref: "#/components/schemas/employment"
+          description: An unordered list of zero or more employments for which the taxpayer had tax deducted in the given tax year.
+      description: Individual tax summary
